@@ -4,14 +4,16 @@ from scipy import integrate
 from decimal import *
 import matplotlib.pyplot as plt
 import warnings
+import csv
 
-warnings.filterwarnings("ignore")
+# warnings.filterwarnings("ignore")
 class Test():
     def __init__(self):
-        self.n=400
+        self.n = 400
         self.xr1 = np.log(3.e-6)
         self.xr2 = np.log(60.e0)
         self.hy=0.1
+        self.hr = (self.xr2-self.xr1)/(self.n-1)
         self.ymax=30.0 # maximum rapidity scale, termination of evolution
         self.y=np.arange(0.0,self.ymax+1,self.hy) # array of rapidity points to be evaluated over
 
@@ -48,30 +50,30 @@ class Test():
         self.xk = np.zeros((4,self.n))
 
         for i in range(400):
-            self.xlr[i] = self.xr1+i*self.hy
+            self.xlr[i] = self.xr1+i*self.hr
             self.r_arr[i] = np.exp(self.xlr[i])
             xlog = np.log(1.0/(0.241*self.r_arr[i])+np.exp(1.0))
             xexp = np.power(self.qsq2*np.power(self.r_arr[i],2),self.gamma)*xlog/4.0
             self.n_current[i] = 1.0-np.exp(-xexp)
+        print("r array")
+        print(self.r_arr)
 
   #      self.func = interpolate.interp1d(self.xlr, self.n_current, kind=5)
         self.t_ = 0.0
         self.func = None
 
-    def alphakw(self,r):
+    def alphakw(self, r):
         cte = np.exp(1.0/(self.beta*self.af))
         alpha = 2.0*self.pre/np.log(np.power(self.auxal/r,2) + cte)
 
         return alpha
-#    def r2(self,r,r1,theta):
-#        r2=np.sqrt(np.power(r,2)+np.power(r1,2)-2*r*r1*np.cos(theta))
-#        return r2
-    def interpolate_n(self,x):
-        n_=0.0
+
+    def interpolate_n(self, x):
+        n_ = 0.0
         if x < self.xr1:
             ex = 1.99
             n_ = np.power(self.n_current[0]*np.exp(x)/self.r_arr[0], ex)
-        elif x>self.xr2:
+        elif x > self.xr2:
             n_ = 1.0
         else:
             n_ = self.func(x)
@@ -80,32 +82,13 @@ class Test():
         if n_ > 1.0: return 1.0
 
         return n_
-#    def ker_simp(self,rvar,r1,theta):
-#        r2=self.r2(rvar,r1,theta)
-#        Nc = 3.0
-#        factor = Nc * self.alphakw(rvar) / (2 * np.power(np.pi, 2))
-#        term1 = np.power(rvar, 2) / (np.power(r1, 2) * np.power(r2, 2))
-#        term2 = (1 / np.power(r1, 2)) * (self.alphakw(r1) / self.alphakw(r2) - 1)
-#        term3 = (1 / np.power(r2, 2)) * (self.alphakw(r2) / self.alphakw(r1) - 1)
-#        return factor * (term1 + term2 + term3)
-    # integration method, simpson
-#    def intg_simp(self,f,a,b,tol):
-#        return 0.0
-#    def inner_simp(self, f5,r,r1,t):
-#        return 0.0
 
 # simpson integrator, w/ corresponding kernel and integrand
-    def ker_gq(self,rvar, r1, r2):
+    def ker_gq(self, rvar, r1, r2):
         if r1 < 1.e-20 or r2<1.e-20:
             return 0.0
         else:
-#            Nc=3.0
-#            factor=Nc*self.alphakw(rvar)/(2*np.power(np.pi,2))
-#            term1=np.power(rvar,2)/(np.power(r1,2)*np.power(r2,2))
-#            term2=(1/np.power(r1,2))*(self.alphakw(r1)/self.alphakw(r2)-1)
-#            term3=(1/np.power(r2,2))*(self.alphakw(r2)/self.alphakw(r1)-1)
-#            return factor*(term1+term2+term3)
-            pre=3.0/(2.0*np.power(np.pi, 2))
+            pre = 3.0/(2.0*np.power(np.pi, 2))
             rr = np.power(rvar, 2)
             r12 = np.power(r1, 2)
             r22 = np.power(r2, 2)
@@ -208,7 +191,7 @@ class Test():
         return zz*ker*(fr1+fr2-fr0-fr1*fr2)[0]
 
 # define self.r
-    def outer_integrand_gq(self,tvar):
+    def outer_integrand_gq(self, tvar):
         self.t_ = tvar
         vfr = self.n_current[np.where(self.r_arr == self.r)]
 
@@ -222,7 +205,8 @@ class Test():
        # print("xr1="+str(self.xr1)+" xr2="+str(self.xr2))
        # integral = self.intg_gq(self.inner_integrand_gq, self.xr1, self.xr2, xprec)
 
-        integral = integrate.quadrature(self.inner_integrand_gq, self.xr1, self.xr2, tol=xprec, vec_func=False)[0]
+        # integral = integrate.quadrature(self.inner_integrand_gq, self.xr1, self.xr2, tol=xprec, vec_func=False)[0]
+        integral = integrate.quad(self.inner_integrand_gq, self.xr1, self.xr2,epsabs=xprec)[0]
         # integral = integrate.romberg(self.inner_integrand_gq, self.xr1, self.xr2, tol=xprec)
         # print("inner = " + str(integral))
         return integral
@@ -251,75 +235,83 @@ class Test():
 """
     def evolve(self):
         # 4th order runge-kutta, and then call interpolations after correction for self.n
-        for i in range(len(self.y)):
-            y0 = self.y[i]
-            print("Y=", y0)
+        with open("result.csv","w") as csvfile:
+            writer = csv.writer(csvfile, delimiter="\t")
 
-            self.func = interpolate.interp1d(self.xlr, self.n_current, kind=5)
+            with open("result2.csv","w") as csvfile2:
+                writer2 = csv.writer(csvfile2,delimiter="\t")
+                for i in range(len(self.y)):
+                    y0 = self.y[i]
+                    print("Y=", y0)
 
-            if self.method == "Euler": kkuta = 1
-            elif self.method == "RK2": kkuta = 2
-            elif self.method == "RK4": kkuta = 4
+                    self.func = interpolate.interp1d(self.xlr, self.n_current, kind=5)
 
-#            n_correction = self.xk()
-#            n_corrected = self.n_current
+                    if self.method == "Euler": kkuta = 1
+                    elif self.method == "RK2": kkuta = 2
+                    elif self.method == "RK4": kkuta = 4
 
-            aux_n = self.n_current # creates auxiliary array, copy of n_current
-            dy = 0.1
+        #            n_correction = self.xk()
+        #            n_corrected = self.n_current
 
-            for k in np.arange(1, kkuta+1):
-                print("KUTTA " + str(k))
-                if kkuta == 2:
-                    if k == 1: dy = 0.5*self.hy
-                    if k == 2: dy = self.hy
-                elif kkuta == 4:
-                    if k == 1: dy = 0.5*self.hy
-                    if k == 2: dy = 0.5*self.hy
-                    if k == 3: dy = self.hy
-                    if k == 4: dy = self.hy
-                """
-                for j in range(self.n): # 737
-                    n_corrected[j] += dy*n_correction[j]
-                    if n_corrected[j] > 1.0:
-                        n_corrected[j] = 1.0
-                # 717
+                    aux_n = self.n_current # creates auxiliary array, copy of n_current
+                    dy = 0.1
 
-                n_next = np.zeros(self.n)
-                for i in range(self.n):
-                    n_next[i] = self.n_current[i]+self.hy*n_correction[i]
-                    if n_next[i] > 1.0:
-                        n_next[i] = 1.0
+                    for k in np.arange(1, kkuta+1):
+                        print("KUTTA " + str(k))
+                        if kkuta == 2:
+                            if k == 1: dy = 0.5*self.hy
+                            if k == 2: dy = self.hy
+                        elif kkuta == 4:
+                            if k == 1: dy = 0.5*self.hy
+                            if k == 2: dy = 0.5*self.hy
+                            if k == 3: dy = self.hy
+                            if k == 4: dy = self.hy
+                        """
+                        for j in range(self.n): # 737
+                            n_corrected[j] += dy*n_correction[j]
+                            if n_corrected[j] > 1.0:
+                                n_corrected[j] = 1.0
+                        # 717
+        
+                        n_next = np.zeros(self.n)
+                        for i in range(self.n):
+                            n_next[i] = self.n_current[i]+self.hy*n_correction[i]
+                            if n_next[i] > 1.0:
+                                n_next[i] = 1.0
+        
+                        self.n_current = n_next
+        """
+                        prev = 0.0 # ???
+                        for i in range(self.n):
+                            self.r = self.r_arr[i]
+                            vfr = aux_n[i]
 
-                self.n_current = n_next
-"""
-                prev = 0.0 # ???
-                for i in range(self.n):
-                    self.r = self.r_arr[i]
-                    vfr = aux_n[i]
+                            if (vfr > self.rlim2) and (np.abs(1.0-prev) < 1.e-13):
+                                self.xk[k-1,i] = 0.0
+                            else:
+                                if vfr < self.rlim1:
+                                    xprec=self.xprec1
+                                elif vfr > self.rlim2:
+                                    xprec=self.xprec3
+                                else:
+                                    xprec=self.xprec2
 
-                    if (vfr > self.rlim2) and (np.abs(1.0-prev) < 1.e-13):
-                        self.xk[k-1,i] = 0.0
-                    else:
-                        if vfr < self.rlim1:
-                            xprec=self.xprec1
-                        elif vfr > self.rlim2:
-                            xprec=self.xprec3
-                        else:
-                            xprec=self.xprec2
+                                # self.xk[k-1,i] = 4.0*integrate.quadrature(self.outer_integrand_gq, 0.0, 0.5*np.pi, tol = xprec, vec_func=False)[0]
+                                self.xk[k - 1, i] = 4.0 * integrate.quad(self.outer_integrand_gq, 0.0, 0.5 * np.pi,epsabs=xprec)[0]
+                                if k == 4: print("{:e}".format(self.xk[k-1, i]))
+                            prev = (vfr+dy*self.xk[k-1, i])/vfr
 
-                        self.xk[k-1,i] = 4.0*integrate.quadrature(self.outer_integrand_gq, 0.0, 0.5*np.pi, tol = xprec, vec_func=False)[0]
-                        if k == 4: print("{:e}".format(self.xk[k-1, i]))
-                    prev = (vfr+dy*self.xk[k-1, i])/vfr
+                        for i in range(self.n):
+                            aux_n[i] = self.n_current[i] + dy*self.xk[k-1, i]
+                            if aux_n[i] > 1.0:
+                                aux_n[i]= 1.0
+                            writer.writerow([y0,self.r_arr[i],aux_n[i]])
 
-                for i in range(self.n):
-                    aux_n[i] = self.n_current[i] + dy*self.xk[k-1, i]
-                    if aux_n[i] > 1.0:
-                        aux_n[i]= 1.0
-
-            for i in range(self.n):
-                self.n_current[i] = self.n_current[i] + self.hy*self.xk[2,i]
-                if self.n_current[i] > 1.0:
-                    self.n_current[i] = 1.0
+                    for i in range(self.n):
+                        self.n_current[i] = self.n_current[i] + self.hy*self.xk[2,i]
+                        if self.n_current[i] > 1.0:
+                            self.n_current[i] = 1.0
+                        writer2.writerow([y0,self.r_arr[i],self.n_current[i]])
 
 
 if __name__ == "__main__":
